@@ -1,80 +1,159 @@
-// frontend/src/App.tsx
-import { useEffect, useState } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  useNodesState,
+  useEdgesState,
+  type Node,
+  type Edge,
+  type OnNodeDrag,
+  BackgroundVariant,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 
-interface HealthResponse {
-  status: string;
-  message: string;
-}
+import { ForceEngine } from './physics/forceEngine';
+import { Sidebar, parseGraphInput } from './components/Sidebar';
+import { CustomCircleNode } from './components/CustomCircleNode';
 
 export function App() {
-  const [backendStatus, setBackendStatus] = useState<string>('Connecting to backend...');
-  const [isError, setIsError] = useState<boolean>(false);
+  const [inputText, setInputText] = useState<string>('');
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  useEffect(() => {
-    const checkBackend = async () => {
-      try {
-        const response = await fetch('http://localhost:8000/api/health');
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        const data: HealthResponse = await response.json();
-        setBackendStatus(data.message);
-        setIsError(false);
-      } catch (err) {
-        setBackendStatus('Could not connect to backend.');
-        setIsError(true);
+  const nodeTypes = useMemo(() => ({ custom: CustomCircleNode }), []);
+
+  const engineRef = useRef<ForceEngine>(new ForceEngine());
+  const animFrameRef = useRef<number | null>(null);
+
+  const runPhysicsLoop = useCallback(() => {
+    if (animFrameRef.current !== null) return;
+
+    const loop = () => {
+      const isMoving = engineRef.current.step();
+      const positions = engineRef.current.getPositions();
+
+      setNodes((currNodes) =>
+        currNodes.map((node) => {
+          const pos = positions.get(node.id);
+          if (!pos) return node;
+          return { ...node, position: { x: pos.x, y: pos.y } };
+        })
+      );
+
+      if (isMoving) {
+        animFrameRef.current = requestAnimationFrame(loop);
+      } else {
+        animFrameRef.current = null;
       }
     };
 
-    checkBackend();
+    animFrameRef.current = requestAnimationFrame(loop);
+  }, [setNodes]);
+
+  useEffect(() => {
+    return () => {
+      if (animFrameRef.current !== null) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+    };
   }, []);
 
+  const handleTextChange = (text: string) => {
+    setInputText(text);
+
+    const { nodes: validNodes, edges: validEdges } = parseGraphInput(text);
+
+    // 1. Sincronizare motor fizic cu nodurile valide
+    engineRef.current.syncNodes(validNodes);
+    const positions = engineRef.current.getPositions();
+
+    // 2. Actualizare noduri React Flow
+    setNodes(
+      validNodes.map((label) => ({
+        id: label,
+        type: 'custom',
+        data: { label },
+        position: positions.get(label) || { x: 350, y: 300 },
+      }))
+    );
+
+    // 3. Actualizare muchii React Flow
+    setEdges(
+      validEdges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: 'straight',
+        style: { stroke: '#38bdf8', strokeWidth: 2 },
+      }))
+    );
+
+    runPhysicsLoop();
+  };
+
+  const onNodeDragStart: OnNodeDrag = (_, node) => {
+    engineRef.current.updateNodePosition(node.id, node.position.x, node.position.y, true);
+    runPhysicsLoop();
+  };
+
+  const onNodeDrag: OnNodeDrag = (_, node) => {
+    engineRef.current.updateNodePosition(node.id, node.position.x, node.position.y, true);
+    runPhysicsLoop();
+  };
+
+  const onNodeDragStop: OnNodeDrag = (_, node) => {
+    engineRef.current.updateNodePosition(node.id, node.position.x, node.position.y, false);
+    runPhysicsLoop();
+  };
+
   return (
-    <main style={styles.container}>
-      <header style={styles.card}>
-        <h1 style={styles.title}>Graph Algorithm Visualizer</h1>
-        <p style={styles.text}>Mediul de dezvoltare este configurat cu succes.</p>
-        <div style={{ ...styles.badge, backgroundColor: isError ? '#ffebee' : '#e8f5e9', color: isError ? '#c62828' : '#2e7d32' }}>
-          Backend Status: {backendStatus}
-        </div>
-      </header>
-    </main>
+    <div style={styles.container}>
+      <Sidebar
+        inputText={inputText}
+        onTextChange={handleTextChange}
+        activeNodesCount={nodes.length}
+        activeEdgesCount={edges.length}
+      />
+
+      <main style={styles.canvasContainer}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          nodesDraggable={true}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
+          onNodeDragStop={onNodeDragStop}
+          fitView
+        >
+          <Background color="#1e293b" variant={BackgroundVariant.Dots} gap={20} size={1.2} />
+          <Controls />
+        </ReactFlow>
+      </main>
+    </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: '100vh',
-    backgroundColor: '#0f172a',
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: '#030712',
     color: '#f8fafc',
     fontFamily: 'system-ui, -apple-system, sans-serif',
+    overflow: 'hidden',
   },
-  card: {
-    backgroundColor: '#1e293b',
-    padding: '2rem',
-    borderRadius: '8px',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-    textAlign: 'center',
-    maxWidth: '480px',
-    width: '100%',
+  canvasContainer: {
+    flex: 1,
+    height: '100%',
+    position: 'relative',
   },
-  title: {
-    margin: '0 0 1rem 0',
-    fontSize: '1.5rem',
-  },
-  text: {
-    margin: '0 0 1.5rem 0',
-    color: '#94a3b8',
-  },
-  badge: {
-    padding: '0.5rem 1rem',
-    borderRadius: '4px',
-    fontSize: '0.875rem',
-    fontWeight: 600,
-  }
 };
 
 export default App;
