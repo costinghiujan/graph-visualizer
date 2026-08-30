@@ -1,23 +1,20 @@
 import React, { useRef } from 'react';
+import { theme } from '../styles/theme';
 
 interface SidebarProps {
   inputText: string;
   onTextChange: (text: string) => void;
   activeNodesCount: number;
   activeEdgesCount: number;
+  isOpen: boolean;
+  onClose?: () => void;
 }
 
 const MAX_LABEL_LENGTH = 3;
 
-// Verifică formatul unui singur nod
 export const isValidNodeLabel = (label: string): boolean => {
   return label.length > 0 && label.length <= MAX_LABEL_LENGTH && !/\s/.test(label);
 };
-
-export interface ParsedGraphData {
-  nodes: string[];
-  edges: Array<{ source: string; target: string; id: string }>;
-}
 
 export const parseGraphInput = (text: string) => {
   const lines = text.split('\n');
@@ -32,7 +29,6 @@ export const parseGraphInput = (text: string) => {
       return { isError: false, message: '' };
     }
 
-    // Cazul 1: Linie cu un singur nod (fără spații interioare)
     if (!trimmed.includes(' ')) {
       if (!isValidNodeLabel(trimmed)) {
         return { isError: true, message: `Nod invalid: "${trimmed}" depășește ${MAX_LABEL_LENGTH} caractere` };
@@ -45,7 +41,6 @@ export const parseGraphInput = (text: string) => {
       return { isError: false, message: '' };
     }
 
-    // Cazul 2: Linie cu muchie (U V)
     const tokens = trimmed.split(' ');
     if (tokens.length !== 2) {
       return { isError: true, message: 'Format invalid: folosește exact 2 noduri despărțite printr-un singur spațiu' };
@@ -53,14 +48,13 @@ export const parseGraphInput = (text: string) => {
 
     const [u, v] = tokens;
     if (!isValidNodeLabel(u) || !isValidNodeLabel(v)) {
-      return { isError: true, message: `Fiecare nod din muchie trebuie să aibă între 1 și ${MAX_LABEL_LENGTH} caractere` };
+      return { isError: true, message: `Fiecare nod trebuie să aibă între 1 și ${MAX_LABEL_LENGTH} caractere` };
     }
 
     if (u === v) {
-      return { isError: true, message: `Auto-muchiile (de la nod la el însuși) nu sunt permise` };
+      return { isError: true, message: 'Auto-muchiile nu sunt permise' };
     }
 
-    // Cheie unică pentru muchie neorientată
     const edgeKey = [u, v].sort().join('--');
     if (seenEdges.has(edgeKey)) {
       return { isError: true, message: `Muchie duplicată între "${u}" și "${v}"` };
@@ -86,6 +80,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTextChange,
   activeNodesCount,
   activeEdgesCount,
+  isOpen,
+  onClose,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
@@ -99,13 +95,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside style={styles.sidebar}>
-      <h2 style={styles.title}>Definire Graf</h2>
-      <p style={styles.desc}>
-        Scrie noduri individuale (ex: <code>A</code>) sau muchii (ex: <code>A B</code>). Nodurile noi sunt create automat.
-      </p>
+    <aside
+      style={{
+        ...styles.sidebar,
+        transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
+      }}
+    >
+      <div style={styles.header}>
+        <div>
+          <h2 style={styles.title}>Definire Graf</h2>
+          <p style={styles.desc}>
+            Scrie noduri (ex: <code>A</code>) sau muchii (ex: <code>A B</code>).
+          </p>
+        </div>
+        {onClose && (
+          <button onClick={onClose} style={styles.closeBtn} aria-label="Închide meniul">
+            ✕
+          </button>
+        )}
+      </div>
 
-      {/* Editor cu Gutter lateral */}
       <div style={styles.editorContainer}>
         <div ref={gutterRef} style={styles.gutter}>
           {lineStatuses.map((status, index) => (
@@ -124,7 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <textarea
           ref={textareaRef}
           style={styles.textarea}
-          placeholder={"2\n3\n2 3\n12 43\na 444"}
+          placeholder={"2\n3\n2 3\n12 43"}
           value={inputText}
           onChange={(e) => onTextChange(e.target.value)}
           onScroll={handleScroll}
@@ -134,7 +143,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div style={styles.card}>
-        <div>Noduri active: <strong style={{ color: '#38bdf8' }}>{activeNodesCount}</strong></div>
+        <div>Noduri active: <strong style={{ color: theme.colors.accent }}>{activeNodesCount}</strong></div>
         <div style={{ marginTop: '0.25rem' }}>
           Muchii active: <strong style={{ color: '#818cf8' }}>{activeEdgesCount}</strong>
         </div>
@@ -143,42 +152,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 };
 
-const LINE_HEIGHT = 24;
-
 const styles: Record<string, React.CSSProperties> = {
   sidebar: {
-    width: '280px',
-    borderRight: '1px solid #1f2937',
-    backgroundColor: '#0b0f19',
+    width: `${theme.sizes.sidebarWidth}px`,
+    maxWidth: '85vw',
+    height: '100%',
+    borderRight: `1px solid ${theme.colors.border}`,
+    backgroundColor: theme.colors.bgSidebar,
     padding: '1.25rem',
     display: 'flex',
     flexDirection: 'column',
     gap: '1rem',
-    zIndex: 10,
+    zIndex: 30,
+    position: 'relative',
+    transition: 'transform 0.25s ease-in-out',
+    boxSizing: 'border-box',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   title: {
     margin: 0,
     fontSize: '1.1rem',
-    color: '#f8fafc',
+    color: theme.colors.textPrimary,
   },
   desc: {
-    margin: 0,
+    margin: '0.25rem 0 0 0',
     fontSize: '0.8rem',
-    color: '#9ca3af',
+    color: theme.colors.textSecondary,
     lineHeight: 1.4,
+  },
+  closeBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: theme.colors.textSecondary,
+    fontSize: '1.1rem',
+    cursor: 'pointer',
+    padding: '0.25rem',
   },
   editorContainer: {
     flex: 1,
     display: 'flex',
-    backgroundColor: '#111827',
-    border: '1px solid #374151',
-    borderRadius: '6px',
+    backgroundColor: theme.colors.bgCard,
+    border: `1px solid ${theme.colors.borderFocus}`,
+    borderRadius: `${theme.sizes.borderRadius}px`,
     overflow: 'hidden',
   },
   gutter: {
     width: '32px',
-    backgroundColor: '#0b0f19',
-    borderRight: '1px solid #1f2937',
+    backgroundColor: theme.colors.bgSidebar,
+    borderRight: `1px solid ${theme.colors.border}`,
     paddingTop: '0.75rem',
     paddingBottom: '0.75rem',
     display: 'flex',
@@ -187,17 +212,17 @@ const styles: Record<string, React.CSSProperties> = {
     userSelect: 'none',
   },
   gutterLine: {
-    height: `${LINE_HEIGHT}px`,
+    height: `${theme.typography.lineHeightEditor}px`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: '0.75rem',
   },
   lineIndex: {
-    color: '#4b5563',
+    color: theme.colors.textMuted,
   },
   errorIcon: {
-    color: '#ef4444',
+    color: theme.colors.error,
     fontWeight: 900,
     fontSize: '0.75rem',
     cursor: 'help',
@@ -206,21 +231,23 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     backgroundColor: 'transparent',
     border: 'none',
-    color: '#f8fafc',
+    color: theme.colors.textPrimary,
     padding: '0.75rem 0.5rem',
-    fontFamily: 'monospace',
+    fontFamily: theme.typography.codeFont,
     fontSize: '0.9rem',
-    lineHeight: `${LINE_HEIGHT}px`,
+    lineHeight: `${theme.typography.lineHeightEditor}px`,
     outline: 'none',
     resize: 'none',
-    whiteSpace: 'pre',
     overflowY: 'auto',
+    overflowX: 'hidden', // Previne apariția barei orizontale
+    scrollbarWidth: 'thin', // Pentru Firefox
   },
   card: {
-    backgroundColor: '#111827',
-    border: '1px solid #1f2937',
+    backgroundColor: theme.colors.bgCard,
+    border: `1px solid ${theme.colors.border}`,
     padding: '0.75rem',
-    borderRadius: '6px',
+    borderRadius: `${theme.sizes.borderRadius}px`,
     fontSize: '0.8rem',
+    boxShadow: theme.shadows.card,
   },
 };
