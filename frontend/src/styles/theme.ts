@@ -11,7 +11,13 @@ export const theme = {
     accent: '#38bdf8',
     accentHover: '#0284c7',
     edgeStroke: '#38bdf8',
+    edgeTraversed: '#fbbf24',
     error: '#ef4444',
+    // Culori stări algoritm
+    nodeStart: '#10b981',     // Verde
+    nodeCurrent: '#f59e0b',   // Galben/Chihlimbar
+    nodeVisited: '#6366f1',   // Indigo
+    nodeQueued: '#0284c7',    // Albastru
   },
   typography: {
     fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
@@ -32,5 +38,3 @@ export const theme = {
     mobile: 768,
   },
 } as const;
-
-export type Theme = typeof theme;
